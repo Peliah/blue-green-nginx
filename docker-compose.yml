@@ -16,11 +16,12 @@ services:
     networks:
       - app_network
     restart: unless-stopped
+
   app_blue:
     image: ${BLUE_IMAGE}
     container_name: app_blue
     ports:
-      - "8081:3000"
+      - "8081:${PORT:-3000}"
     environment:
       - APP_POOL=blue
       - RELEASE_ID=${RELEASE_ID_BLUE}
@@ -35,18 +36,19 @@ services:
           "--quiet",
           "--tries=1",
           "--spider",
-          "http://localhost:3000/healthz",
+          "http://localhost:${PORT:-3000}/healthz",
         ]
-      interval: 5s
-      timeout: 3s
+      interval: 3s
+      timeout: 2s
       retries: 3
-      start_period: 10s
+      start_period: 2s
+    restart: unless-stopped
 
   app_green:
     image: ${GREEN_IMAGE}
     container_name: app_green
     ports:
-      - "8082:3000"
+      - "8082:${PORT:-3000}"
     environment:
       - APP_POOL=green
       - RELEASE_ID=${RELEASE_ID_GREEN}
@@ -61,12 +63,13 @@ services:
           "--quiet",
           "--tries=1",
           "--spider",
-          "http://localhost:3000/healthz",
+          "http://localhost:${PORT:-3000}/healthz",
         ]
-      interval: 5s
-      timeout: 3s
+      interval: 3s
+      timeout: 2s
       retries: 3
-      start_period: 10s
+      start_period: 2s
+    restart: unless-stopped
 
 networks:
   app_network:
