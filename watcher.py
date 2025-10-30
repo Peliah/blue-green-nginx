@@ -129,13 +129,15 @@ class AlertWatcher:
         
         # Build Slack message
         slack_data = {
+            "username": "DushaneBOT",
+            "icon_emoji": ":robot_face:",
             "text": f":warning: *{alert_type.upper()} ALERT*",
             "attachments": [{
                 "color": colors.get(alert_type, '#FF0000'),
                 "title": f"{alert_type.replace('_', ' ').title()} Detected",
                 "text": message,
                 "fields": [],
-                "footer": "Nginx Alert Watcher",
+                "footer": "DushaneBOT - Nginx Alert Watcher",
                 "ts": int(time.time())
             }]
         }
