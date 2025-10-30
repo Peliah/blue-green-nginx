@@ -8,6 +8,7 @@ services:
       - "8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
     depends_on:
       app_blue:
         condition: service_healthy
@@ -71,6 +72,31 @@ services:
       start_period: 2s
     restart: unless-stopped
 
+  alert_watcher:
+    image: python:3.11-slim
+    container_name: alert_watcher
+    volumes:
+      - nginx_logs:/var/log/nginx:ro
+      - ./watcher.py:/app/watcher.py:ro
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir requests && python -u watcher.py"
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - ACTIVE_POOL=${ACTIVE_POOL:-blue}
+      - ERROR_RATE_THRESHOLD=${ERROR_RATE_THRESHOLD:-2}
+      - WINDOW_SIZE=${WINDOW_SIZE:-200}
+      - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC:-300}
+      - MAINTENANCE_MODE=${MAINTENANCE_MODE:-false}
+    depends_on:
+      - nginx
+    networks:
+      - app_network
+    restart: unless-stopped
+
 networks:
   app_network:
     driver: bridge
+
+volumes:
+  nginx_logs:

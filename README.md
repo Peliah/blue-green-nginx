@@ -32,12 +32,21 @@ A production-ready Blue/Green deployment setup using Nginx for automatic failove
 - **Fast Failure Detection**: 2s timeouts with 1 max_fail triggers immediate failover
 - **Manual Toggle**: Switch active pool via `ACTIVE_POOL` environment variable
 - **Chaos Testing**: Built-in endpoints to simulate failures
+- **🆕 Real-time Monitoring**: Python log watcher tracks pool health and error rates
+- **🆕 Slack Alerts**: Automated notifications for failovers and high error rates
+- **🆕 Operational Visibility**: Enhanced Nginx logs with pool, release, and timing data
 
 ## Quick Start
 
 ### 1. Configure Environment
 
-Edit `.env` with your configuration:
+Copy `.env.example` to `.env` and edit with your configuration:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
 
 ```bash
 # Set your container images
@@ -53,6 +62,14 @@ RELEASE_ID_GREEN=green-v1.0.0
 
 # Optional: custom port (defaults to 3000)
 PORT=3000
+
+# Slack webhook for alerts (get from https://api.slack.com/messaging/webhooks)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+# Alert thresholds
+ERROR_RATE_THRESHOLD=2
+WINDOW_SIZE=200
+ALERT_COOLDOWN_SEC=300
 ```
 
 ### 2. Start Services
@@ -218,15 +235,137 @@ The grader will:
    - Validate zero failures and Green takeover
    - Check ≥95% Green response rate
 
+## Monitoring and Alerts
+
+### Overview
+
+The system includes real-time monitoring with automated Slack alerts for operational issues:
+
+- **Failover Detection**: Alerts when traffic shifts between Blue and Green pools
+- **Error Rate Monitoring**: Tracks 5xx errors over a sliding window
+- **Recovery Notifications**: Alerts when primary pool recovers
+
+### Alert Types
+
+#### 1. Failover Alert 🟠
+Triggered when traffic automatically fails over from one pool to another.
+
+**What it means:** The primary pool is unhealthy and traffic has switched to backup.
+
+**Action:** See [runbook.md](runbook.md) for response procedures.
+
+#### 2. High Error Rate Alert 🔴
+Triggered when 5xx error rate exceeds threshold (default: 2% over last 200 requests).
+
+**What it means:** Upstream services are experiencing issues.
+
+**Action:** Investigate logs, consider rollback or failover.
+
+#### 3. Recovery Alert 🟢
+Triggered when primary pool becomes healthy again after a failover.
+
+**What it means:** System has automatically recovered to normal operation.
+
+**Action:** Monitor for stability, document incident.
+
+### Configuration
+
+Monitoring is configured via environment variables in `.env`:
+
+```bash
+# Slack webhook URL (required for alerts)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+# Error rate threshold (percentage)
+ERROR_RATE_THRESHOLD=2
+
+# Sliding window size (requests)
+WINDOW_SIZE=200
+
+# Alert cooldown (seconds)
+ALERT_COOLDOWN_SEC=300
+
+# Maintenance mode (suppresses alerts)
+MAINTENANCE_MODE=false
+```
+
+### Viewing Logs
+
+**Alert Watcher Logs:**
+```bash
+docker-compose logs -f alert_watcher
+```
+
+**Nginx Monitoring Logs:**
+```bash
+docker-compose exec nginx tail -f /var/log/nginx/monitoring.log
+```
+
+**Sample monitoring log entry:**
+```
+time=2025-10-30T14:23:45+00:00 method=GET uri=/version status=200 pool=blue release=v1.0.0-blue upstream=172.18.0.3:3000 upstream_status=200 request_time=0.012 upstream_response_time=0.010
+```
+
+### Testing Alerts
+
+**Trigger a failover alert:**
+```bash
+# Induce chaos on Blue to force failover
+curl -X POST http://localhost:8081/chaos/start?mode=error
+
+# Send traffic to trigger detection
+for i in {1..10}; do curl http://localhost:8080/version; sleep 0.5; done
+
+# Stop chaos
+curl -X POST http://localhost:8081/chaos/stop
+```
+
+**Simulate high error rate:**
+```bash
+# Enable error mode on active pool
+curl -X POST http://localhost:8081/chaos/start?mode=error
+
+# Generate enough requests to trigger alert (needs 200+ requests at >2% error rate)
+for i in {1..250}; do curl http://localhost:8080/version; done
+
+# Stop chaos
+curl -X POST http://localhost:8081/chaos/stop
+```
+
+### Maintenance Mode
+
+Suppress alerts during planned operations:
+
+```bash
+# Enable maintenance mode
+sed -i 's/MAINTENANCE_MODE=false/MAINTENANCE_MODE=true/' .env
+docker-compose up -d alert_watcher
+
+# Perform maintenance...
+
+# Disable maintenance mode
+sed -i 's/MAINTENANCE_MODE=true/MAINTENANCE_MODE=false/' .env
+docker-compose up -d alert_watcher
+```
+
+### Runbook
+
+For detailed operational procedures, see [runbook.md](runbook.md).
+
 ## File Structure
 
 ```
 .
 ├── docker-compose.yml      # Service orchestration
-├── nginx.conf.template     # Nginx configuration template
-├── entrypoint.sh          # Dynamic config generation
-├── .env                   # Environment configuration
-├── test-failover.sh       # Automated failover test
+├── nginx/
+│   └── nginx.conf         # Nginx configuration with monitoring
+├── watcher.py             # Alert watcher service
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment configuration (create from .env.example)
+├── .env.example          # Environment configuration template
+├── test.sh               # Quick test script
+├── test-fail.sh          # Failover test script
+├── runbook.md            # Operational procedures and troubleshooting
 └── README.md             # This file
 ```
 

@@ -1,0 +1,2 @@
+# Python dependencies for alert_watcher service
+requests>=2.31.0
